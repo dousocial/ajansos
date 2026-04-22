@@ -1,0 +1,176 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  /* AjansOS Ana Renkler */
+  --primary:              oklch(0.45 0.22 280);   /* #5B3BFF */
+  --primary-dark:         oklch(0.35 0.24 280);
+  --primary-light:        oklch(0.95 0.04 280);   /* #EDE8FF */
+  --primary-foreground:   oklch(1 0 0);
+
+  --secondary:            oklch(0.96 0.01 280);
+  --secondary-foreground: oklch(0.15 0.03 280);
+
+  --accent:               oklch(0.96 0.01 280);
+  --accent-foreground:    oklch(0.15 0.03 280);
+
+  /* AI rengi */
+  --ai:                   oklch(0.55 0.18 295);   /* #8B5CF6 */
+  --ai-gradient:          linear-gradient(135deg, oklch(0.45 0.22 280) 0%, oklch(0.55 0.18 295) 50%, oklch(0.70 0.14 310) 100%);
+  --ai-glow:              0 0 20px oklch(0.45 0.22 280 / 0.30);
+
+  /* Nötrler */
+  --background:           oklch(0.97 0.01 280);   /* #F5F4FF — hafif mor ton */
+  --foreground:           oklch(0.15 0.03 280);   /* #1A1628 */
+
+  --card:                 oklch(1 0 0);
+  --card-foreground:      oklch(0.15 0.03 280);
+
+  --popover:              oklch(1 0 0);
+  --popover-foreground:   oklch(0.15 0.03 280);
+
+  --muted:                oklch(0.95 0.02 280);   /* #F0EFF7 */
+  --muted-foreground:     oklch(0.42 0.05 280);   /* #5C5470 */
+
+  --border:               oklch(0.91 0.02 280);   /* #E2DDEF */
+  --input:                oklch(0.91 0.02 280);
+  --ring:                 oklch(0.45 0.22 280);
+
+  --destructive:          oklch(0.62 0.22 25);    /* #EF4444 */
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Durum renkleri */
+  --success:              oklch(0.65 0.18 155);
+  --success-light:        oklch(0.96 0.04 155);
+  --warning:              oklch(0.76 0.17 75);
+  --warning-light:        oklch(0.97 0.04 75);
+  --error:                oklch(0.62 0.22 25);
+  --error-light:          oklch(0.96 0.04 25);
+  --info:                 oklch(0.60 0.20 255);
+  --info-light:           oklch(0.96 0.04 255);
+
+  /* Pipeline durumları */
+  --status-planned:       oklch(0.62 0.04 280);
+  --status-shoot:         oklch(0.60 0.20 255);
+  --status-edit:          oklch(0.55 0.18 295);
+  --status-internal:      oklch(0.76 0.17 75);
+  --status-client:        oklch(0.66 0.18 35);
+  --status-live:          oklch(0.65 0.18 155);
+  --status-done:          oklch(0.42 0.05 280);
+
+  --radius: 0.625rem;
+
+  --sidebar:              oklch(1 0 0);
+  --sidebar-foreground:   oklch(0.15 0.03 280);
+  --sidebar-primary:      oklch(0.45 0.22 280);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent:       oklch(0.95 0.04 280);
+  --sidebar-accent-foreground: oklch(0.45 0.22 280);
+  --sidebar-border:       oklch(0.91 0.02 280);
+  --sidebar-ring:         oklch(0.45 0.22 280);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+}
+
+/* AI gradient border */
+.ai-border {
+  position: relative;
+  isolation: isolate;
+}
+.ai-border::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  background: var(--ai-gradient);
+  z-index: -1;
+}
+
+/* Streaming metin imleci */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.streaming-cursor::after {
+  content: "▋";
+  animation: blink 1s infinite;
+  color: var(--ai);
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    var(--border) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* İnce scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* Mobil safe area */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }

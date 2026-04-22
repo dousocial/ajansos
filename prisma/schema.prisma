@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enum'lar ────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  TEAM
+  CLIENT
+}
+
+enum ContentStatus {
+  PLANNED
+  SHOOTING
+  EDITING
+  INTERNAL_REVIEW
+  CLIENT_REVIEW
+  APPROVED
+  LIVE
+  PUBLISHED
+}
+
+enum Platform {
+  INSTAGRAM
+  FACEBOOK
+  TIKTOK
+  LINKEDIN
+  TWITTER
+  YOUTUBE
+}
+
+enum PostType {
+  IMAGE
+  VIDEO
+  REEL
+  STORY
+  CAROUSEL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REVISION_REQUESTED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  FILE_UPLOADED
+  INTERNAL_APPROVED
+  CLIENT_APPROVED
+  CLIENT_REVISION
+  POST_FAILED
+  TOKEN_EXPIRING
+  REMINDER
+}
+
+enum SentimentCategory {
+  POSITIVE
+  NEUTRAL
+  CONCERNED
+  DISAPPOINTED
+  URGENT
+}
+
+// ─── Kullanıcılar ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  role          Role      @default(TEAM)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  accounts          Account[]
+  sessions          Session[]
+  teamAssignments   TeamAssignment[]
+  tasks             Task[]             @relation("AssignedTo")
+  notifications     Notification[]
+  approvals         Approval[]
+  activityLogs      ActivityLog[]
+  notificationPrefs NotificationPref[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Müşteriler ───────────────────────────────────────────────────────────────
+
+model Client {
+  id            String    @id @default(cuid())
+  name          String
+  slug          String    @unique
+  logo          String?
+  industry      String?
+  contactName   String?
+  contactEmail  String?
+  contactPhone  String?
+  brandColors   Json?
+  brandVoice    String?
+  bannedWords   String[]
+  emojiPolicy   Boolean   @default(true)
+  revisionQuota Int       @default(3)
+  portalToken   String?   @unique
+  healthScore   Int       @default(100)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  socialAccounts  SocialAccount[]
+  projects        Project[]
+  teamAssignments TeamAssignment[]
+  notifications   Notification[]
+
+  @@index([slug])
+}
+
+// ─── Ekip Ataması ─────────────────────────────────────────────────────────────
+
+model TeamAssignment {
+  id       String @id @default(cuid())
+  userId   String
+  clientId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+}
+
+// ─── Sosyal Medya Hesapları ───────────────────────────────────────────────────
+
+model SocialAccount {
+  id             String    @id @default(cuid())
+  clientId       String
+  platform       Platform
+  accountId      String
+  accountName    String
+  accessTokenEnc String
+  tokenExpiresAt DateTime?
+  pageId         String?
+  instagramId    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  scheduledPosts ScheduledPost[]
+
+  @@unique([clientId, platform, accountId])
+  @@index([clientId])
+}
+
+// ─── Projeler / İçerikler ─────────────────────────────────────────────────────
+
+model Project {
+  id            String        @id @default(cuid())
+  clientId      String
+  title         String
+  description   String?
+  status        ContentStatus @default(PLANNED)
+  platforms     Platform[]
+  postType      PostType      @default(IMAGE)
+  shootDate     DateTime?
+  shootLocation String?
+  publishAt     DateTime?
+  publishedAt   DateTime?
+  brief         String?
+  caption       String?
+  hashtags      String[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+  files          File[]
+  approvals      Approval[]
+  scheduledPosts ScheduledPost[]
+  aiLogs         AiLog[]
+  activityLogs   ActivityLog[]
+
+  @@index([clientId, status])
+  @@index([publishAt])
+}
+
+// ─── Görevler ─────────────────────────────────────────────────────────────────
+
+model Task {
+  id           String    @id @default(cuid())
+  projectId    String
+  assignedToId String?
+  title        String
+  description  String?
+  dueDate      DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedTo User?   @relation("AssignedTo", fields: [assignedToId], references: [id])
+
+  @@index([projectId])
+  @@index([assignedToId])
+}
+
+// ─── Dosyalar ─────────────────────────────────────────────────────────────────
+
+model File {
+  id         String    @id @default(cuid())
+  projectId  String
+  name       String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String    @unique
+  publicUrl  String
+  version    Int       @default(1)
+  label      String?
+  aiScore    Int?
+  aiReport   Json?
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ─── Onaylar ──────────────────────────────────────────────────────────────────
+
+model Approval {
+  id             String             @id @default(cuid())
+  projectId      String
+  reviewerId     String?
+  type           String
+  status         ApprovalStatus     @default(PENDING)
+  note           String?
+  sentiment      SentimentCategory?
+  sentimentScore Float?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reviewer User?   @relation(fields: [reviewerId], references: [id])
+
+  @@index([projectId])
+}
+
+// ─── Zamanlanmış Paylaşımlar ──────────────────────────────────────────────────
+
+model ScheduledPost {
+  id              String    @id @default(cuid())
+  projectId       String
+  socialAccountId String
+  platform        Platform
+  caption         String?
+  hashtags        String[]
+  mediaUrls       String[]
+  scheduledAt     DateTime
+  publishedAt     DateTime?
+  status          String    @default("pending")
+  retryCount      Int       @default(0)
+  lastError       String?
+  idempotencyKey  String    @unique @default(cuid())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledAt, status])
+}
+
+// ─── Bildirimler ──────────────────────────────────────────────────────────────
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String?
+  clientId   String?
+  type       NotificationType
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  read       Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model NotificationPref {
+  id     String           @id @default(cuid())
+  userId String
+  type   NotificationType
+  email  Boolean          @default(true)
+  push   Boolean          @default(true)
+  inApp  Boolean          @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+}
+
+// ─── AI Log ───────────────────────────────────────────────────────────────────
+
+model AiLog {
+  id           String   @id @default(cuid())
+  projectId    String?
+  feature      String
+  model        String
+  inputHash    String?
+  inputTokens  Int?
+  outputTokens Int?
+  durationMs   Int?
+  cached       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([feature, createdAt])
+}
+
+// ─── Aktivite Logu ────────────────────────────────────────────────────────────
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  projectId String?
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([userId])
+}
