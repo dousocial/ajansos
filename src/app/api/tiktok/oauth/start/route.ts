@@ -38,7 +38,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const redirectUri = `${appUrl}/api/tiktok/oauth/callback`;
-  const scope = ["user.info.basic", "video.publish", "video.upload"].join(",");
+  // video.publish review onayı bekliyor — şimdilik sadece basic + upload.
+  // Onay gelince listeye "video.publish" eklenecek.
+  const scope = ["user.info.basic", "video.upload"].join(",");
 
   const oauthUrl = new URL("https://www.tiktok.com/v2/auth/authorize/");
   oauthUrl.searchParams.set("client_key", tiktokClientKey);
