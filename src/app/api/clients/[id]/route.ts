@@ -3,6 +3,10 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
+// Vergi numarası: VKN 10 hane (kurumsal) veya TCKN 11 hane (şahıs).
+// Her ikisini birden kabul ediyoruz; boş geçilebilir.
+const TAX_ID_REGEX = /^(?:\d{10}|\d{11})$/;
+
 const UpdateClientSchema = z.object({
   name: z.string().min(1).optional(),
   industry: z.string().optional(),
@@ -14,6 +18,14 @@ const UpdateClientSchema = z.object({
   emojiPolicy: z.boolean().optional(),
   revisionQuota: z.number().int().min(0).optional(),
   healthScore: z.number().int().min(0).max(100).optional(),
+  // Faturalama
+  taxId: z
+    .string()
+    .regex(TAX_ID_REGEX, "VKN (10 hane) veya TCKN (11 hane) olmalı")
+    .optional()
+    .or(z.literal("")),
+  taxOffice: z.string().optional().or(z.literal("")),
+  billingAddress: z.string().optional().or(z.literal("")),
 });
 
 type Params = { params: Promise<{ id: string }> };
@@ -35,8 +47,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
       projects: {
         where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
-        take: 10,
-        select: { id: true, title: true, status: true, platforms: true, postType: true, publishAt: true, createdAt: true },
+        take: 20,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          platforms: true,
+          postType: true,
+          publishAt: true,
+          publishedAt: true,
+          shootDate: true,
+          shootLocation: true,
+          createdAt: true,
+          purposes: true,
+          briefDone: true,
+          shootingDone: true,
+          editingDone: true,
+          adRequired: true,
+          adPosted: true,
+          files: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "asc" },
+            take: 1,
+            select: { id: true, publicUrl: true, mimeType: true },
+          },
+        },
       },
       _count: { select: { projects: true } },
     },
@@ -78,13 +113,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Müşteri bulunamadı" }, { status: 404 });
   }
 
-  const { contactEmail, ...rest } = parsed.data;
+  const { contactEmail, taxId, taxOffice, billingAddress, ...rest } = parsed.data;
 
   const client = await prisma.client.update({
     where: { id },
     data: {
       ...rest,
+      // Boş string → null çevir (DB'de "" yerine null tut, UI'da "yok" göster).
       ...(contactEmail !== undefined ? { contactEmail: contactEmail || null } : {}),
+      ...(taxId !== undefined ? { taxId: taxId || null } : {}),
+      ...(taxOffice !== undefined ? { taxOffice: taxOffice || null } : {}),
+      ...(billingAddress !== undefined ? { billingAddress: billingAddress || null } : {}),
     },
   });
 

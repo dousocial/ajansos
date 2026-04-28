@@ -7,7 +7,7 @@ const UpdateProjectSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
   status: z
-    .enum(["PLANNED", "SHOOTING", "EDITING", "INTERNAL_REVIEW", "CLIENT_REVIEW", "APPROVED", "LIVE", "PUBLISHED"])
+    .enum(["PLANNED", "SHOOTING", "EDITING", "INTERNAL_REVIEW", "CLIENT_REVIEW", "APPROVED", "LIVE", "PUBLISHED", "CANCELLED"])
     .optional(),
   platforms: z
     .array(z.enum(["INSTAGRAM", "FACEBOOK", "TIKTOK", "LINKEDIN", "TWITTER", "YOUTUBE"]))
@@ -19,6 +19,15 @@ const UpdateProjectSchema = z.object({
   brief: z.string().optional(),
   caption: z.string().optional(),
   hashtags: z.array(z.string()).optional(),
+  // Süreç Yönetimi alanları — Süreç tablosundan checkbox güncellemeleri.
+  purposes: z
+    .array(z.enum(["BILGI", "EGLENCE", "TANITIM", "KAMPANYA", "POST"]))
+    .optional(),
+  briefDone: z.boolean().optional(),
+  shootingDone: z.boolean().optional(),
+  editingDone: z.boolean().optional(),
+  adRequired: z.boolean().optional(),
+  adPosted: z.boolean().optional(),
 });
 
 type Params = { params: Promise<{ id: string }> };

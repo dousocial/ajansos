@@ -7,8 +7,9 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "AjansOS — AI Destekli Ajans Yönetimi",
+  title: "DouCRM — AI Destekli Ajans Yönetimi",
   description: "Sosyal medya ajansınızı yapay zeka ile yönetin",
+  icons: { icon: "/logo.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

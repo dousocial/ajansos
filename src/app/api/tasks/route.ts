@@ -20,11 +20,15 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get("projectId");
-  const assignedToId = searchParams.get("assignedToId");
+  const assignedToIdParam = searchParams.get("assignedToId");
+  const mine = searchParams.get("mine") === "true";
   const completed = searchParams.get("completed");
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
   const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "50"));
   const skip = (page - 1) * limit;
+
+  // `mine=true` → session.user.id'ye bağlı
+  const assignedToId = mine ? session.user.id : assignedToIdParam;
 
   const where = {
     ...(projectId ? { projectId } : {}),

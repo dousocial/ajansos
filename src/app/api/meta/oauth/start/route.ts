@@ -22,10 +22,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const redirectUri = `${appUrl}/api/meta/oauth/callback`;
   const scope = [
+    "pages_show_list",
     "pages_manage_posts",
+    "pages_read_engagement",
     "instagram_basic",
     "instagram_content_publish",
-    "pages_read_engagement",
+    "business_management",
   ].join(",");
 
   const oauthUrl = new URL("https://www.facebook.com/v19.0/dialog/oauth");
@@ -33,6 +35,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   oauthUrl.searchParams.set("redirect_uri", redirectUri);
   oauthUrl.searchParams.set("scope", scope);
   oauthUrl.searchParams.set("state", clientId);
+  // Eski grant'ı override edip yeni izinleri (örn. business_management)
+  // sormaya zorlar; aksi halde Facebook "yeniden bağlan" diyor ve eski
+  // izinlerle devam ediyor.
+  oauthUrl.searchParams.set("auth_type", "rerequest");
 
   return NextResponse.redirect(oauthUrl.toString());
 }

@@ -1,41 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate } from "@/lib/utils";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/constants";
 import {
   CheckCircle2, XCircle, MessageSquare, Clock,
   Camera, Globe2, TrendingUp, Eye, Download,
-  ThumbsUp, RefreshCw,
+  ThumbsUp, RefreshCw, Loader2, Briefcase, PlaySquare, FileImage,
+  EyeOff,
 } from "lucide-react";
 
-const DEMO_CONTENTS: {
-  id: string; title: string; platform: string; status: string;
-  publishAt: string; thumbnail: null; caption: string; revisions: number;
-}[] = [];
+interface PortalProject {
+  id: string;
+  title: string;
+  status: string;
+  platforms: string[];
+  postType: string;
+  caption: string | null;
+  publishAt: string | null;
+  updatedAt: string;
+  revisions: number;
+}
 
 const PLATFORM_ICONS: Record<string, React.ElementType> = {
   INSTAGRAM: Camera,
   FACEBOOK: Globe2,
   TIKTOK: TrendingUp,
+  LINKEDIN: Briefcase,
+  YOUTUBE: PlaySquare,
 };
 
 function ContentCard({
   content,
   onApprove,
   onRevision,
+  busy,
+  readOnly = false,
 }: {
-  content: (typeof DEMO_CONTENTS)[0];
-  onApprove?: (id: string) => void;
-  onRevision?: (id: string) => void;
+  content: PortalProject;
+  onApprove?: (id: string) => Promise<void> | void;
+  onRevision?: (id: string, note: string) => Promise<void> | void;
+  busy?: "approve" | "revision" | null;
+  readOnly?: boolean;
 }) {
   const [note, setNote] = useState("");
   const [showNote, setShowNote] = useState(false);
-  const Icon = PLATFORM_ICONS[content.platform] ?? Camera;
+  const primaryPlatform = content.platforms[0] ?? "INSTAGRAM";
+  const Icon = PLATFORM_ICONS[primaryPlatform] ?? FileImage;
   const isPending = content.status === "CLIENT_REVIEW";
 
   return (
@@ -51,7 +66,7 @@ function ContentCard({
       <div className="aspect-[4/3] rounded-xl bg-muted/50 border border-border flex items-center justify-center relative overflow-hidden">
         <div className="text-center text-muted-foreground">
           <Icon className="h-8 w-8 mx-auto mb-2" />
-          <p className="text-xs">{content.platform}</p>
+          <p className="text-xs">{primaryPlatform}</p>
         </div>
         {content.status === "APPROVED" && (
           <div className="absolute top-2 right-2">
@@ -60,7 +75,7 @@ function ContentCard({
             </Badge>
           </div>
         )}
-        {content.status === "PUBLISHED" && (
+        {(content.status === "LIVE" || content.status === "PUBLISHED") && (
           <div className="absolute top-2 right-2">
             <Badge className="bg-primary text-white text-[10px] gap-1 border-0">
               <Eye className="h-3 w-3" /> Yayında
@@ -73,23 +88,27 @@ function ContentCard({
       <div>
         <p className="font-semibold text-sm">{content.title}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          Yayın: {formatDate(content.publishAt)}
+          {content.publishAt
+            ? `Yayın: ${formatDate(new Date(content.publishAt))}`
+            : "Yayın planlanmadı"}
         </p>
       </div>
 
-      <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-border pl-3 italic">
-        {content.caption}
-      </p>
+      {content.caption && (
+        <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-border pl-3 italic whitespace-pre-wrap">
+          {content.caption}
+        </p>
+      )}
 
       {content.revisions > 0 && (
         <div className="flex items-center gap-1.5 text-[11px] text-amber-600">
           <RefreshCw className="h-3 w-3" />
-          {content.revisions} revizyon yapıldı
+          {content.revisions} onay hareketi yapıldı
         </div>
       )}
 
-      {/* Aksiyon butonları */}
-      {isPending && (
+      {/* Aksiyon butonları — önizleme modunda gizli */}
+      {isPending && !readOnly && (
         <div className="space-y-2 pt-1">
           {showNote && (
             <textarea
@@ -101,17 +120,21 @@ function ContentCard({
           )}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setShowNote(false);
-                onApprove?.(content.id);
-              }}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold py-2 transition-colors"
+              onClick={() => onApprove?.(content.id)}
+              disabled={!!busy}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white text-xs font-semibold py-2 transition-colors"
             >
-              <ThumbsUp className="h-3.5 w-3.5" /> Onayla
+              {busy === "approve" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <ThumbsUp className="h-3.5 w-3.5" />
+              )}
+              Onayla
             </button>
             <button
               onClick={() => setShowNote(!showNote)}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold py-2 transition-colors"
+              disabled={!!busy}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-semibold py-2 transition-colors"
             >
               <MessageSquare className="h-3.5 w-3.5" />
               {showNote ? "İptal" : "Revizyon İste"}
@@ -119,13 +142,20 @@ function ContentCard({
           </div>
           {showNote && note.trim() && (
             <button
-              onClick={() => {
+              onClick={async () => {
+                await onRevision?.(content.id, note);
+                setNote("");
                 setShowNote(false);
-                onRevision?.(content.id);
               }}
-              className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-amber-400 text-amber-600 text-xs font-semibold py-2 hover:bg-amber-50 transition-colors"
+              disabled={!!busy}
+              className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-amber-400 text-amber-600 text-xs font-semibold py-2 hover:bg-amber-50 disabled:opacity-60 transition-colors"
             >
-              <XCircle className="h-3.5 w-3.5" /> Revizyon Gönder
+              {busy === "revision" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5" />
+              )}
+              Revizyon Gönder
             </button>
           )}
         </div>
@@ -135,37 +165,132 @@ function ContentCard({
 }
 
 export default function PortalPage() {
-  const [contents, setContents] = useState(DEMO_CONTENTS);
+  const [clientName, setClientName] = useState<string>("Müşteri Portalı");
+  const [contents, setContents] = useState<PortalProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<{ id: string; kind: "approve" | "revision" } | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      // ?preview=<jwt> varsa ADMIN/TEAM salt-okunur moddadır — token'ı API'ye aktarırız
+      const preview =
+        typeof window !== "undefined"
+          ? new URL(window.location.href).searchParams.get("preview")
+          : null;
+      const endpoint = preview
+        ? `/api/portal/projects?preview=${encodeURIComponent(preview)}`
+        : "/api/portal/projects";
+      const res = await fetch(endpoint, { cache: "no-store" });
+      if (!res.ok) throw new Error("Portal yüklenemedi");
+      const json = (await res.json()) as {
+        client: { id: string; name: string } | null;
+        projects: PortalProject[];
+        mode?: "client" | "preview";
+        error?: string;
+      };
+      if (json.client) setClientName(json.client.name);
+      if (json.error) setError(json.error);
+      setPreviewMode(json.mode === "preview");
+      setContents(json.projects ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleApprove(id: string) {
+    setBusy({ id, kind: "approve" });
+    try {
+      const res = await fetch(`/api/portal/projects/${id}/approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "APPROVED" }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? "Onay kaydedilemedi");
+      }
+      toast.success("İçerik onaylandı");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRevision(id: string, note: string) {
+    setBusy({ id, kind: "revision" });
+    try {
+      const res = await fetch(`/api/portal/projects/${id}/approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "REVISION", note }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? "Revizyon kaydedilemedi");
+      }
+      toast.success("Revizyon isteği gönderildi");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   const pending = contents.filter((c) => c.status === "CLIENT_REVIEW");
   const approved = contents.filter((c) => c.status === "APPROVED");
-  const published = contents.filter((c) => c.status === "PUBLISHED");
+  const published = contents.filter((c) => c.status === "LIVE" || c.status === "PUBLISHED");
 
-  const handleApprove = (id: string) => {
-    setContents((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: "APPROVED" } : c))
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        Portal yükleniyor…
+      </div>
     );
-  };
-
-  const handleRevision = (id: string) => {
-    setContents((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, status: "CLIENT_REVIEW", revisions: c.revisions + 1 } : c
-      )
-    );
-  };
+  }
 
   return (
     <div className="space-y-5">
+      {previewMode && (
+        <div className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-2.5">
+          <EyeOff className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-xs">
+            <p className="font-semibold text-amber-800 dark:text-amber-300">Önizleme modu</p>
+            <p className="text-amber-700 dark:text-amber-400/80 mt-0.5">
+              Bu sayfayı yönetici olarak görüntülüyorsunuz. Onaylama ve revizyon
+              aksiyonları devre dışıdır — yalnızca müşteri kullanıcısı kendi hesabından
+              karar verebilir.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">İçeriklerim</h1>
-          <p className="text-sm text-muted-foreground">Coffee House — Müşteri Portalı</p>
+          <p className="text-sm text-muted-foreground">{clientName} — Müşteri Portalı</p>
         </div>
         <button className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}>
           <Download className="h-3.5 w-3.5" /> Rapor İndir
         </button>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-destructive font-medium">{error}</p>
+        </div>
+      )}
 
       {/* Özet sayaçlar */}
       <div className="grid grid-cols-3 gap-3">
@@ -199,12 +324,19 @@ export default function PortalPage() {
           {pending.length === 0 ? (
             <Card className="p-8 text-center text-muted-foreground">
               <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500" />
-              <p className="font-medium">Tüm içerikler onaylandı!</p>
+              <p className="font-medium">Bekleyen içerik yok</p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {pending.map((c) => (
-                <ContentCard key={c.id} content={c} onApprove={handleApprove} onRevision={handleRevision} />
+                <ContentCard
+                  key={c.id}
+                  content={c}
+                  onApprove={handleApprove}
+                  onRevision={handleRevision}
+                  busy={busy?.id === c.id ? busy.kind : null}
+                  readOnly={previewMode}
+                />
               ))}
             </div>
           )}

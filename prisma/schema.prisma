@@ -3,10 +3,9 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
+// Prisma 7+: url/directUrl artık burada değil, prisma.config.ts içinde tanımlı.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 
 // ─── Enum'lar ────────────────────────────────────────────────────────────────
@@ -26,6 +25,27 @@ enum ContentStatus {
   APPROVED
   LIVE
   PUBLISHED
+  // İptal edildi — /icerikler sayfasında ayrı kategori. APPROVED'den sonra
+  // proje iptal olduysa (müşteri vazgeçti, çekim iptal vb.) bu duruma alınır.
+  CANCELLED
+}
+
+// Projenin amacı — birden fazla seçilebilir (örn. hem TANITIM hem KAMPANYA).
+// Süreç Yönetimi sayfasındaki "Amaç" çoklu seçim kutusunu besler.
+enum Purpose {
+  BILGI       // Bilgilendirme
+  EGLENCE     // Eğlence
+  TANITIM     // Tanıtım
+  KAMPANYA    // Kampanya
+  POST        // Düz post / genel
+}
+
+// Müşteri dosya kategorisi — sözleşme/fatura/diğer.
+// File modeli proje-bazlı medya için kullanılıyor; bu ise client-level evrak.
+enum ClientDocumentKind {
+  CONTRACT     // Sözleşme
+  INVOICE_DOC  // Fatura belgesi (kesilmiş PDF)
+  OTHER        // Diğer (vekalet, kimlik, vb.)
 }
 
 enum Platform {
@@ -60,6 +80,42 @@ enum NotificationType {
   POST_FAILED
   TOKEN_EXPIRING
   REMINDER
+  INVOICE_SENT
+  INVOICE_PAID
+  INVOICE_OVERDUE
+  INVOICE_DUE_SOON
+  // Reklam çıkıldı işaretlenmedi — yayından N saat sonra adRequired=true
+  // adPosted=false olan ScheduledPost için tetiklenir.
+  AD_NOT_POSTED
+  // Faturası kesilmemiş subscription — nextInvoiceDate'e 7 gün kaldı,
+  // hâlâ otomatik fatura üretilmemiş (cron erken uyarı).
+  INVOICE_NOT_GENERATED
+}
+
+enum Currency {
+  TRY
+  USD
+  EUR
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+}
+
+enum SubscriptionInterval {
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
 enum SentimentCategory {
@@ -136,31 +192,63 @@ model VerificationToken {
 // ─── Müşteriler ───────────────────────────────────────────────────────────────
 
 model Client {
-  id            String    @id @default(cuid())
-  name          String
-  slug          String    @unique
-  logo          String?
-  industry      String?
-  contactName   String?
-  contactEmail  String?
-  contactPhone  String?
-  brandColors   Json?
-  brandVoice    String?
-  bannedWords   String[]
-  emojiPolicy   Boolean   @default(true)
-  revisionQuota Int       @default(3)
-  portalToken   String?   @unique
-  healthScore   Int       @default(100)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id             String    @id @default(cuid())
+  name           String
+  slug           String    @unique
+  logo           String?
+  industry       String?
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  brandColors    Json?
+  brandVoice     String?
+  bannedWords    String[]
+  emojiPolicy    Boolean   @default(true)
+  revisionQuota  Int       @default(3)
+  portalToken    String?   @unique
+  healthScore    Int       @default(100)
+  // Faturalama bilgileri — Türk mevzuatı için gerekli
+  taxId          String?   // VKN (10 haneli) veya TCKN (11 haneli)
+  taxOffice      String?   // Vergi dairesi (ör. "Kadıköy")
+  billingAddress String?   // Fatura adresi
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   socialAccounts  SocialAccount[]
   projects        Project[]
   teamAssignments TeamAssignment[]
   notifications   Notification[]
+  invoices        Invoice[]
+  subscriptions   Subscription[]
+  documents       ClientDocument[]
 
   @@index([slug])
+}
+
+// Müşteri-bazlı evrak (sözleşme, fatura PDF, vb.). Project.files medya
+// için, bu ise yönetimsel evrak. Ödemeler kart sayfasından upload edilir,
+// listelenir, indirilir.
+model ClientDocument {
+  id         String             @id @default(cuid())
+  clientId   String
+  kind       ClientDocumentKind
+  name       String             // dosya adı (kullanıcının yüklediği)
+  label      String?            // opsiyonel etiket: "2026 Mart Sözleşme"
+  mimeType   String
+  sizeBytes  Int
+  storageKey String             @unique
+  publicUrl  String
+  // İlişkili fatura (kind=INVOICE_DOC ise) — bağlamak istenirse dolu.
+  invoiceId  String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  deletedAt  DateTime?
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, kind])
+  @@index([invoiceId])
 }
 
 // ─── Ekip Ataması ─────────────────────────────────────────────────────────────
@@ -188,6 +276,10 @@ model SocialAccount {
   tokenExpiresAt DateTime?
   pageId         String?
   instagramId    String?
+  // Bağlanan sayfanın profil fotoğrafı URL'si — OAuth callback sırasında
+  // platform API'sinden çekip kaydediyoruz. UI'da hesap kartında
+  // gösteriyoruz; null ise platform logosuna fallback.
+  profileImageUrl String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -215,6 +307,24 @@ model Project {
   brief         String?
   caption       String?
   hashtags      String[]
+  // /yayin/hizli akışı arkada Project yaratır ama kullanıcı bunu üretim
+  // sürecinin parçası olarak görmez. Bu flag ile /icerikler listesinden
+  // gizliyoruz; /yayin sayfasında ScheduledPost'larıyla görünmeye devam eder.
+  isQuickPublish Boolean      @default(false)
+  // ─── Süreç Yönetimi alanları ────────────────────────────────────────
+  // Amaç (çoktan seçmeli) — Süreç Yönetimi tablosundaki dropdown.
+  purposes      Purpose[]
+  // Üretim aşamaları — ContentStatus'dan bağımsız boolean checkbox'lar.
+  // Bir proje "EDITING" durumunda olabilir ama briefi henüz onaylanmamış
+  // olabilir → bu üçü ortogonal eksenler.
+  briefDone     Boolean       @default(false)
+  shootingDone  Boolean       @default(false)
+  editingDone   Boolean       @default(false)
+  // Reklam akışı — müşteri kartında "reklam çık" ibaresi + reklam çıkıldı
+  // mı işareti. adRequired=true ve adPosted=false ise yayın sonrası 24h
+  // içinde işaretlenmediğinde uyarı (yanıp söner) tetiklenir.
+  adRequired    Boolean       @default(false)
+  adPosted      Boolean       @default(false)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
@@ -229,6 +339,8 @@ model Project {
 
   @@index([clientId, status])
   @@index([publishAt])
+  // /icerikler listesi her zaman isQuickPublish=false + deletedAt=null filtreliyor.
+  @@index([isQuickPublish, deletedAt])
 }
 
 // ─── Görevler ─────────────────────────────────────────────────────────────────
@@ -266,6 +378,7 @@ model File {
   aiScore    Int?
   aiReport   Json?
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
   deletedAt  DateTime?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -309,6 +422,10 @@ model ScheduledPost {
   retryCount      Int       @default(0)
   lastError       String?
   idempotencyKey  String    @unique @default(cuid())
+  // Platform tarafındaki post ID (Meta media_id, LI urn:share:..., YT videoId,
+  // TikTok publish_id). Yayın başarılıysa burada tutulur — tekrar dispatch
+  // edildiğinde "zaten gönderildi" olarak atlanır + insights cron'u bunu kullanır.
+  externalId      String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -316,6 +433,9 @@ model ScheduledPost {
   socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
 
   @@index([scheduledAt, status])
+  // dispatchPublish project status sync count'u (projectId + status filter) ve
+  // proje detay sayfasındaki yayın listesi bu indexten yararlanır.
+  @@index([projectId, status])
 }
 
 // ─── Bildirimler ──────────────────────────────────────────────────────────────
@@ -368,6 +488,73 @@ model AiLog {
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([feature, createdAt])
+}
+
+// ─── Abonelikler (aylık retainer) ─────────────────────────────────────────────
+
+model Subscription {
+  id              String               @id @default(cuid())
+  clientId        String
+  name            String               // "Instagram Yönetimi - Aylık Retainer"
+  description     String?
+  amount          Decimal              @db.Decimal(12, 2) // KDV öncesi aylık tutar
+  currency        Currency             @default(TRY)
+  vatRate         Decimal              @db.Decimal(5, 2) @default(20.00)
+  interval        SubscriptionInterval @default(MONTHLY)
+  startDate       DateTime
+  endDate         DateTime? // null = süresiz
+  nextInvoiceDate DateTime // cron bu tarihi kullanarak fatura üretir
+  status          SubscriptionStatus   @default(ACTIVE)
+  notes           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  deletedAt       DateTime?
+
+  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([clientId, status])
+  @@index([nextInvoiceDate, status])
+}
+
+// ─── Faturalar ────────────────────────────────────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(cuid())
+  clientId       String
+  subscriptionId String? // null = ad-hoc proje faturası
+  invoiceNumber  String        @unique // "2026-0001"
+  title          String
+  description    String?
+  // Para birimi & tutarlar (KDV hariç → KDV → toplam)
+  currency       Currency      @default(TRY)
+  amount         Decimal       @db.Decimal(12, 2) // net (KDV hariç)
+  vatRate        Decimal       @db.Decimal(5, 2) @default(20.00)
+  vatAmount      Decimal       @db.Decimal(12, 2)
+  totalAmount    Decimal       @db.Decimal(12, 2) // amount + vatAmount
+  // Durum & tarihler
+  status         InvoiceStatus @default(DRAFT)
+  issueDate      DateTime      @default(now())
+  dueDate        DateTime
+  sentAt         DateTime?
+  paidAt         DateTime?
+  // Ödeme
+  paymentMethod  String? // "havale", "eft", "nakit", "kart"
+  paymentNote    String?
+  // Müşteriye gösterilen not (ör. IBAN, açıklama)
+  publicNote     String?
+  // PDF önbelleği
+  pdfUrl         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, status])
+  @@index([dueDate, status])
+  @@index([issueDate])
 }
 
 // ─── Aktivite Logu ────────────────────────────────────────────────────────────

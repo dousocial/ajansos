@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Loader2, Eye, EyeOff } from "lucide-react";
+import Image from "next/image";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,13 +47,18 @@ export default function LoginPage() {
       <div className="relative w-full max-w-sm">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg"
-               style={{ boxShadow: "var(--shadow-ai)" }}>
-            <Sparkles className="h-6 w-6 text-white" />
-          </div>
+          <Image
+            src="/logo.svg"
+            alt="DouCRM"
+            width={64}
+            height={64}
+            className="h-16 w-16 rounded-2xl object-contain"
+            priority
+            unoptimized
+          />
           <div className="text-center">
             <h1 className="text-2xl font-bold text-foreground">
-              Ajans<span className="text-primary">OS</span>
+              Dou<span className="text-primary">CRM</span>
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               Your Agency, Amplified by AI
@@ -124,7 +130,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          AjansOS © {new Date().getFullYear()} — AI Destekli Ajans Yönetimi
+          DouCRM © {new Date().getFullYear()} — AI Destekli Ajans Yönetimi
         </p>
       </div>
     </div>

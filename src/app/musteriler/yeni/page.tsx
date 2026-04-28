@@ -2,6 +2,7 @@
 
 import { useState, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Check,
+  Loader2,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -449,6 +451,7 @@ export default function YeniMusteriPage() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>(INITIAL_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const updateForm = (patch: Partial<FormData>) => {
     setForm((prev) => ({ ...prev, ...patch }));
@@ -482,10 +485,37 @@ export default function YeniMusteriPage() {
     setStep((s) => Math.max(s - 1, 1));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validateStep(3)) return;
-    console.log("formData:", form);
-    router.push("/musteriler");
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          industry: form.industry || undefined,
+          contactName: form.contactName || undefined,
+          contactEmail: form.email || undefined,
+          contactPhone: form.phone || undefined,
+          brandVoice: form.brandVoice || undefined,
+          bannedWords: form.bannedWords,
+          emojiPolicy: form.emojiPolicy === "allow",
+          revisionQuota: form.revisionQuota,
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? "Müşteri oluşturulamadı");
+      }
+      toast.success("Müşteri oluşturuldu");
+      router.push("/musteriler");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -554,10 +584,15 @@ export default function YeniMusteriPage() {
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={submitting}
             className={cn(buttonVariants(), "gap-1.5")}
           >
-            <Check className="h-4 w-4" />
-            Oluştur
+            {submitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
+            {submitting ? "Oluşturuluyor..." : "Oluştur"}
           </button>
         )}
       </div>

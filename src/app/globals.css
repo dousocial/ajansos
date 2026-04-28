@@ -41,44 +41,44 @@
 }
 
 :root {
-  /* AjansOS Ana Renkler */
-  --primary:              oklch(0.45 0.22 280);   /* #5B3BFF */
-  --primary-dark:         oklch(0.35 0.24 280);
-  --primary-light:        oklch(0.95 0.04 280);   /* #EDE8FF */
+  /* DouCRM Ana Renkler — bordo / kestane (#800000 ailesi) */
+  --primary:              #800000;                 /* Maroon */
+  --primary-dark:         #5C0000;
+  --primary-light:        oklch(0.95 0.04 29);     /* hafif rose tonu */
   --primary-foreground:   oklch(1 0 0);
 
-  --secondary:            oklch(0.96 0.01 280);
-  --secondary-foreground: oklch(0.15 0.03 280);
+  --secondary:            oklch(0.96 0.01 29);
+  --secondary-foreground: oklch(0.15 0.03 29);
 
-  --accent:               oklch(0.96 0.01 280);
-  --accent-foreground:    oklch(0.15 0.03 280);
+  --accent:               oklch(0.96 0.01 29);
+  --accent-foreground:    oklch(0.15 0.03 29);
 
-  /* AI rengi */
-  --ai:                   oklch(0.55 0.18 295);   /* #8B5CF6 */
-  --ai-gradient:          linear-gradient(135deg, oklch(0.45 0.22 280) 0%, oklch(0.55 0.18 295) 50%, oklch(0.70 0.14 310) 100%);
-  --ai-glow:              0 0 20px oklch(0.45 0.22 280 / 0.30);
+  /* AI rengi — bordo aile içinde */
+  --ai:                   oklch(0.55 0.18 25);
+  --ai-gradient:          linear-gradient(135deg, #800000 0%, oklch(0.55 0.18 25) 50%, oklch(0.70 0.14 35) 100%);
+  --ai-glow:              0 0 20px oklch(0.45 0.22 29 / 0.30);
 
   /* Nötrler */
-  --background:           oklch(0.97 0.01 280);   /* #F5F4FF — hafif mor ton */
-  --foreground:           oklch(0.15 0.03 280);   /* #1A1628 */
+  --background:           oklch(0.97 0.01 29);     /* hafif rose ton — eskiden mor tonluydu */
+  --foreground:           oklch(0.15 0.03 29);
 
   --card:                 oklch(1 0 0);
-  --card-foreground:      oklch(0.15 0.03 280);
+  --card-foreground:      oklch(0.15 0.03 29);
 
   --popover:              oklch(1 0 0);
-  --popover-foreground:   oklch(0.15 0.03 280);
+  --popover-foreground:   oklch(0.15 0.03 29);
 
-  --muted:                oklch(0.95 0.02 280);   /* #F0EFF7 */
-  --muted-foreground:     oklch(0.42 0.05 280);   /* #5C5470 */
+  --muted:                oklch(0.95 0.02 29);
+  --muted-foreground:     oklch(0.42 0.05 29);
 
-  --border:               oklch(0.91 0.02 280);   /* #E2DDEF */
-  --input:                oklch(0.91 0.02 280);
-  --ring:                 oklch(0.45 0.22 280);
+  --border:               oklch(0.91 0.02 29);
+  --input:                oklch(0.91 0.02 29);
+  --ring:                 #800000;
 
-  --destructive:          oklch(0.62 0.22 25);    /* #EF4444 */
+  --destructive:          oklch(0.62 0.22 25);    /* #EF4444 — değişmedi */
   --destructive-foreground: oklch(1 0 0);
 
-  /* Durum renkleri */
+  /* Durum renkleri — değişmedi */
   --success:              oklch(0.65 0.18 155);
   --success-light:        oklch(0.96 0.04 155);
   --warning:              oklch(0.76 0.17 75);
@@ -88,25 +88,25 @@
   --info:                 oklch(0.60 0.20 255);
   --info-light:           oklch(0.96 0.04 255);
 
-  /* Pipeline durumları */
-  --status-planned:       oklch(0.62 0.04 280);
+  /* Pipeline durumları — mor tonlu olanlar bordoya çevrildi */
+  --status-planned:       oklch(0.62 0.04 29);
   --status-shoot:         oklch(0.60 0.20 255);
-  --status-edit:          oklch(0.55 0.18 295);
+  --status-edit:          oklch(0.55 0.18 25);
   --status-internal:      oklch(0.76 0.17 75);
   --status-client:        oklch(0.66 0.18 35);
   --status-live:          oklch(0.65 0.18 155);
-  --status-done:          oklch(0.42 0.05 280);
+  --status-done:          oklch(0.42 0.05 29);
 
   --radius: 0.625rem;
 
   --sidebar:              oklch(1 0 0);
-  --sidebar-foreground:   oklch(0.15 0.03 280);
-  --sidebar-primary:      oklch(0.45 0.22 280);
+  --sidebar-foreground:   oklch(0.15 0.03 29);
+  --sidebar-primary:      #800000;
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent:       oklch(0.95 0.04 280);
-  --sidebar-accent-foreground: oklch(0.45 0.22 280);
-  --sidebar-border:       oklch(0.91 0.02 280);
-  --sidebar-ring:         oklch(0.45 0.22 280);
+  --sidebar-accent:       oklch(0.95 0.04 29);
+  --sidebar-accent-foreground: #800000;
+  --sidebar-border:       oklch(0.91 0.02 29);
+  --sidebar-ring:         #800000;
 }
 
 @layer base {

@@ -7,6 +7,47 @@ export const PLATFORM_LABELS: Record<string, string> = {
   YOUTUBE: "YouTube",
 };
 
+// Yayınlama backend'inin hazır olduğu platformlar. Her biri için:
+//  • src/lib/publish/<platform>.ts → API çağrısı
+//  • src/app/api/<platform>/oauth/start + /callback → bağlantı akışı
+//  • Dispatcher (src/lib/publish/index.ts) case'i
+//
+// Twitter/X henüz yok — eklenene kadar UI'da kilitli kalır.
+export const SUPPORTED_PUBLISH_PLATFORMS: string[] = [
+  "INSTAGRAM",
+  "FACEBOOK",
+  "LINKEDIN",
+  "YOUTUBE",
+  "TIKTOK",
+];
+
+export function isPlatformSupported(platform: string): boolean {
+  return SUPPORTED_PUBLISH_PLATFORMS.includes(platform);
+}
+
+/**
+ * Platform için hangi OAuth/API env değişkenlerinin olması gerektiğini anlatır.
+ * Anahtar: Platform kodu. Değer: "bu platform canlı olsun" için gerekli env anahtarları.
+ *
+ * `isPlatformConfigured()` runtime'da bu listeden yola çıkarak gerçekten bağlı
+ * olup olmadığını kontrol eder — OAuth butonu göstermek veya "önce .env doldur"
+ * uyarısı çıkarmak için kullanılır.
+ */
+export const PLATFORM_ENV_REQUIREMENTS: Record<string, string[]> = {
+  INSTAGRAM: ["META_APP_ID", "META_APP_SECRET"],
+  FACEBOOK: ["META_APP_ID", "META_APP_SECRET"],
+  LINKEDIN: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
+  YOUTUBE: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+  TIKTOK: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],
+};
+
+/** Server-side helper. Client bundle'a env sızdırmaz. */
+export function isPlatformConfigured(platform: string): boolean {
+  const required = PLATFORM_ENV_REQUIREMENTS[platform];
+  if (!required) return false;
+  return required.every((k) => Boolean(process.env[k]));
+}
+
 export const PLATFORM_COLORS: Record<string, string> = {
   INSTAGRAM: "bg-pink-100 text-pink-700",
   FACEBOOK: "bg-blue-100 text-blue-700",

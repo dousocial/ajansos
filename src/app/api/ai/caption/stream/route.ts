@@ -1,23 +1,28 @@
 import { NextRequest } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
+import { auth } from "@/auth";
+import { rateLimit, keyFromRequest, rateLimitHeaders } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// Gemini istemcisi lazy — env değişkeni eksikse modül yüklenirken patlamasın,
+// hata yalnızca çağrı sırasında tetiklensin ve kullanıcıya temiz şekilde aktarılsın.
+let cachedClient: GoogleGenerativeAI | null = null;
+function getGeminiClient(): GoogleGenerativeAI {
+  if (cachedClient) return cachedClient;
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("AI_UNAVAILABLE: GEMINI_API_KEY tanımlı değil");
+  }
+  cachedClient = new GoogleGenerativeAI(key);
+  return cachedClient;
+}
 
 const TONE_PROMPTS: Record<string, string> = {
   fun: "eğlenceli, enerjik, emoji kullanımı serbest",
   inspirational: "ilham verici, motive edici, güçlü mesaj",
   professional: "kurumsal, sade, bilgilendirici",
-};
-
-const DEMO_CAPTIONS: Record<string, string> = {
-  fun: "Hayatın tadını çıkar! 🎉 Her an bir fırsat, her gün yeni bir macera. Seninle bu yolculukta olmaktan mutluluk duyuyoruz! ✨\n\n#eğlence #yaşam #mutluluk #anıyaşa #pozitifenerji #günlük #lifestyle",
-  inspirational:
-    "Büyük başarılar küçük adımlarla başlar. Her gün bir adım daha ileri git, çünkü sen buna layıksın. 💪\n\n#motivasyon #başarı #hedef #ilham #güçlü #kararlılık #gelişim",
-  professional:
-    "Kalite ve güvenilirlik, her işimizin temelinde yer almaktadır. Profesyonel hizmet anlayışımızla yanınızdayız.\n\n#profesyonel #kalite #hizmet #güvenilir #iş #kurumsal #marka",
 };
 
 const InputSchema = z.object({
@@ -32,12 +37,37 @@ const InputSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // AI çağrıları pahalı (Gemini token + rate limit) → kullanıcı/IP başına
+  // dakikada 20 istek. Authn'lı ise userId, değilse IP üzerinden.
+  const session = await auth();
+  if (!session?.user) {
+    return new Response(JSON.stringify({ error: "Yetkisiz" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const RL_LIMIT = 20;
+  const rl = rateLimit({
+    key: `ai:caption:${session.user.id ?? keyFromRequest(req, "ip")}`,
+    limit: RL_LIMIT,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) {
+    return new Response(
+      JSON.stringify({ error: "Çok fazla istek, biraz bekle" }),
+      {
+        status: 429,
+        headers: { "Content-Type": "application/json", ...rateLimitHeaders(rl, RL_LIMIT) },
+      }
+    );
+  }
+
   let parsed: z.infer<typeof InputSchema>;
 
   try {
     const body = await req.json();
     parsed = InputSchema.parse(body);
-  } catch (e) {
+  } catch {
     return new Response(JSON.stringify({ error: "Invalid input" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -53,14 +83,30 @@ export async function POST(req: NextRequest) {
       const send = (data: object) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
+      const close = () => {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      };
+
+      let genAI: GoogleGenerativeAI;
+      try {
+        genAI = getGeminiClient();
+      } catch (e) {
+        const message =
+          e instanceof Error && e.message.startsWith("AI_UNAVAILABLE")
+            ? "AI servisi şu anda yapılandırılmamış. Lütfen yöneticinize başvurun."
+            : "AI servisine bağlanılamadı.";
+        send({ type: "error", message });
+        close();
+        return;
+      }
 
       const suggestions: { tone: string; caption: string }[] = [];
 
-      try {
-        for (const tone of tones) {
-          const toneLabel = TONE_PROMPTS[tone] ?? tone;
+      for (const tone of tones) {
+        const toneLabel = TONE_PROMPTS[tone] ?? tone;
 
-          const prompt = `Sen bir sosyal medya içerik uzmanısın.
+        const prompt = `Sen bir sosyal medya içerik uzmanısın.
 Platform: ${platform}
 İçerik türü: ${postType}
 Brief: ${brief}
@@ -71,46 +117,46 @@ ${brandVoice ? `Marka sesi: ${brandVoice}` : ""}
 - Hashtag'leri ayrı satırda sonuna ekle (5-8 adet)
 - 150-280 karakter arası (hashtag hariç)`;
 
-          send({ type: "tone_start", tone });
+        send({ type: "tone_start", tone });
 
-          let fullText = "";
+        let fullText = "";
 
-          try {
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-            const result = await model.generateContentStream(prompt);
+        try {
+          const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+          const result = await model.generateContentStream(prompt);
 
-            for await (const chunk of result.stream) {
-              const text = chunk.text();
-              if (text) {
-                fullText += text;
-                send({ type: "chunk", tone, content: text });
-              }
+          for await (const chunk of result.stream) {
+            const text = chunk.text();
+            if (text) {
+              fullText += text;
+              send({ type: "chunk", tone, content: text });
             }
-          } catch {
-            // Fallback to demo caption for this tone
-            const demoCaption = DEMO_CAPTIONS[tone] ?? `${tone} caption örneği`;
-            fullText = demoCaption;
-            send({ type: "chunk", tone, content: demoCaption });
           }
-
-          suggestions.push({ tone, caption: fullText.trim() });
+        } catch (e) {
+          // Tek ton başarısız olursa — kullanıcıya bildir, sonraki tonla devam et.
+          const message = e instanceof Error ? e.message : "Bilinmeyen AI hatası";
+          console.error(`[ai/caption/stream] Tone "${tone}" failed:`, message);
+          send({ type: "tone_error", tone, message });
           send({ type: "tone_done", tone });
+          continue;
         }
-      } catch {
-        // Full fallback: return demo suggestions for all tones
-        const demoSuggestions = tones.map((tone) => ({
-          tone,
-          caption: DEMO_CAPTIONS[tone] ?? `${tone} caption örneği`,
-        }));
-        send({ type: "done", suggestions: demoSuggestions });
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
-        return;
+
+        const trimmed = fullText.trim();
+        if (trimmed) {
+          suggestions.push({ tone, caption: trimmed });
+        }
+        send({ type: "tone_done", tone });
       }
 
-      send({ type: "done", suggestions });
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      controller.close();
+      if (suggestions.length === 0) {
+        send({
+          type: "error",
+          message: "AI hiçbir öneri üretemedi. Lütfen daha sonra tekrar deneyin.",
+        });
+      } else {
+        send({ type: "done", suggestions });
+      }
+      close();
     },
   });
 

@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
       take: limit,
       orderBy: { createdAt: "desc" },
       include: {
+        socialAccounts: { select: { platform: true } },
         _count: { select: { projects: true, teamAssignments: true } },
       },
     }),

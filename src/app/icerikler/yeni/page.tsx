@@ -1,63 +1,71 @@
+/**
+ * Yeni Üretim (Project) formu — yalnızca ÜRETİM tarafı.
+ *
+ * Bu form Project kaydı yaratır; ScheduledPost oluşturmaz, platform/caption/
+ * publishAt almaz. Yayın tarafı /yayin/yeni'den yürütülür: orada onaylı
+ * Project üzerinden platform seçimi + caption + scheduledAt girilir.
+ *
+ * Burada toplanan alanlar:
+ *  - clientId, title (zorunlu)
+ *  - postType: üretim tipi (REEL/IMAGE/CAROUSEL/...) — çekim ekibi için bilgi
+ *  - brief: içerik fikri / yönerge
+ *  - shootDate, shootLocation: çekim planlaması
+ *  - mediaFiles: ham çekim/onay aşaması medyaları
+ *
+ * Yayın alanları (platforms, caption, hashtags, publishAt) bilinçli olarak
+ * KALDIRILDI — iki süreç DB ve UI seviyesinde ayrık.
+ */
+
 "use client";
 
-import { useState, KeyboardEvent } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Camera, Globe2, Briefcase, Video, PlaySquare, X } from "lucide-react";
+import {
+  X,
+  Loader2,
+  Upload,
+  FileVideo,
+  ImageIcon,
+} from "lucide-react";
 
-// ─── Demo veriler ────────────────────────────────────────────────────────────
+interface ClientOption {
+  id: string;
+  name: string;
+}
 
-const DEMO_CLIENTS = [
-  { id: "1", name: "Coffee House" },
-  { id: "2", name: "ModaStore" },
-  { id: "3", name: "FitLife Gym" },
-  { id: "4", name: "Teknosa" },
-  { id: "5", name: "Natura Beauty" },
-  { id: "6", name: "BurgerLab" },
-];
+interface UploadedMedia {
+  storageKey: string;
+  publicUrl: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+}
 
-// ─── Platform tanımları ──────────────────────────────────────────────────────
-
-type Platform = "INSTAGRAM" | "FACEBOOK" | "TIKTOK" | "LINKEDIN" | "YOUTUBE";
 type PostType = "IMAGE" | "VIDEO" | "REEL" | "STORY" | "CAROUSEL";
 
-const PLATFORMS: { key: Platform; label: string; Icon: React.ElementType }[] = [
-  { key: "INSTAGRAM", label: "Instagram", Icon: Camera },
-  { key: "FACEBOOK", label: "Facebook", Icon: Globe2 },
-  { key: "TIKTOK", label: "TikTok", Icon: Video },
-  { key: "LINKEDIN", label: "LinkedIn", Icon: Briefcase },
-  { key: "YOUTUBE", label: "YouTube", Icon: PlaySquare },
+const POST_TYPES: { key: PostType; label: string; hint: string }[] = [
+  { key: "IMAGE", label: "Görsel", hint: "Tek kare statik post" },
+  { key: "CAROUSEL", label: "Carousel", hint: "Çoklu görsel kaydırma" },
+  { key: "VIDEO", label: "Video", hint: "Yatay/kare video" },
+  { key: "REEL", label: "Reels", hint: "Dikey kısa video" },
+  { key: "STORY", label: "Story", hint: "24 saatlik dikey içerik" },
 ];
-
-const POST_TYPES: { key: PostType; label: string }[] = [
-  { key: "IMAGE", label: "Görsel" },
-  { key: "VIDEO", label: "Video" },
-  { key: "REEL", label: "Reels" },
-  { key: "STORY", label: "Story" },
-  { key: "CAROUSEL", label: "Carousel" },
-];
-
-// ─── Form state tipi ─────────────────────────────────────────────────────────
 
 interface FormData {
   clientId: string;
   title: string;
-  platforms: Platform[];
-  postType: PostType | "";
+  postType: PostType;
   brief: string;
-  caption: string;
-  hashtags: string[];
   shootDate: string;
   shootLocation: string;
-  publishAt: string;
 }
-
-// ─── Sayfa bileşeni ──────────────────────────────────────────────────────────
 
 export default function YeniIcerikPage() {
   const router = useRouter();
@@ -65,98 +73,128 @@ export default function YeniIcerikPage() {
   const [form, setForm] = useState<FormData>({
     clientId: "",
     title: "",
-    platforms: [],
-    postType: "",
+    postType: "IMAGE",
     brief: "",
-    caption: "",
-    hashtags: [],
     shootDate: "",
     shootLocation: "",
-    publishAt: "",
   });
 
-  const [hashtagInput, setHashtagInput] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [media, setMedia] = useState<UploadedMedia[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
 
-  // ── Yardımcı güncelleyiciler ───────────────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/clients?limit=100")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((json: { data: ClientOption[] }) => setClients(json.data ?? []))
+      .catch(() => toast.error("Müşteri listesi yüklenemedi"));
+  }, []);
 
   function setField<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function togglePlatform(platform: Platform) {
-    setForm((prev) => ({
-      ...prev,
-      platforms: prev.platforms.includes(platform)
-        ? prev.platforms.filter((p) => p !== platform)
-        : [...prev.platforms, platform],
-    }));
-  }
+  // ── Medya yükleme ──────────────────────────────────────────────────────────
 
-  // ── Hashtag yönetimi ───────────────────────────────────────────────────────
-
-  function addHashtag() {
-    const raw = hashtagInput.trim();
-    if (!raw) return;
-    const tag = raw.startsWith("#") ? raw : `#${raw}`;
-    if (!form.hashtags.includes(tag)) {
-      setField("hashtags", [...form.hashtags, tag]);
+  async function handleFiles(files: FileList | File[]) {
+    if (!form.clientId) {
+      toast.error("Önce müşteri seçin (yükleme klasörü için).");
+      return;
     }
-    setHashtagInput("");
-  }
-
-  function handleHashtagKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addHashtag();
-    }
-  }
-
-  function removeHashtag(tag: string) {
-    setField(
-      "hashtags",
-      form.hashtags.filter((h) => h !== tag)
+    const arr = Array.from(files);
+    setUploadingCount((n) => n + arr.length);
+    await Promise.all(
+      arr.map(async (file) => {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("clientId", form.clientId);
+        try {
+          const r = await fetch("/api/upload", { method: "POST", body: fd });
+          const j = (await r.json().catch(() => ({}))) as {
+            data?: UploadedMedia;
+            error?: string;
+          };
+          if (!r.ok || !j.data) throw new Error(j.error ?? "Yükleme başarısız");
+          setMedia((prev) => [...prev, j.data!]);
+        } catch (e) {
+          toast.error(
+            `${file.name}: ${e instanceof Error ? e.message : "yükleme hatası"}`
+          );
+        } finally {
+          setUploadingCount((n) => n - 1);
+        }
+      })
     );
   }
 
-  // ── Doğrulama ──────────────────────────────────────────────────────────────
+  function removeMedia(storageKey: string) {
+    setMedia((prev) => prev.filter((m) => m.storageKey !== storageKey));
+    fetch(`/api/upload?key=${encodeURIComponent(storageKey)}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  }
+
+  // ── Doğrulama & gönderim ──────────────────────────────────────────────────
 
   function validate(): boolean {
     const errs: string[] = [];
     if (!form.clientId) errs.push("Lütfen bir müşteri seçin.");
     if (!form.title.trim()) errs.push("Başlık zorunludur.");
-    if (form.platforms.length === 0) errs.push("En az bir platform seçin.");
     setErrors(errs);
     return errs.length === 0;
   }
 
-  // ── Gönderim ───────────────────────────────────────────────────────────────
-
-  function handleAddToPipeline() {
+  async function handleSubmit() {
     if (!validate()) return;
-    console.log("Pipeline'a Ekle →", form);
-    router.push("/icerikler");
-  }
-
-  function handleSaveDraft() {
-    if (!validate()) return;
-    console.log("Taslak Kaydet →", form);
-    router.push("/dashboard");
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: form.clientId,
+          title: form.title,
+          postType: form.postType,
+          brief: form.brief || undefined,
+          shootDate: form.shootDate
+            ? new Date(form.shootDate).toISOString()
+            : undefined,
+          shootLocation: form.shootLocation || undefined,
+          mediaFiles: media,
+          // Bilinçli olarak gönderilmeyen alanlar: platforms, caption,
+          // hashtags, publishAt → bunlar /yayin/yeni'de ScheduledPost
+          // oluşturulurken doldurulur.
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? "İçerik oluşturulamadı");
+      }
+      toast.success("Üretim kaydı oluşturuldu");
+      router.push("/icerikler");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
-      {/* Sayfa başlığı */}
       <div>
-        <h1 className="text-2xl font-bold">Yeni İçerik</h1>
+        <h1 className="text-2xl font-bold">Yeni Üretim</h1>
         <p className="text-sm text-muted-foreground">
-          İçerik bilgilerini doldurarak pipeline'a ekleyin.
+          Brief, çekim planı ve ham medya. Platform seçimi ve yayın planlaması{" "}
+          <span className="font-medium text-foreground">Yayın Planlayıcı</span>'da
+          yapılır — proje onaylandıktan sonra.
         </p>
       </div>
 
-      {/* Hata mesajları */}
       {errors.length > 0 && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 space-y-1">
           {errors.map((err) => (
@@ -167,17 +205,14 @@ export default function YeniIcerikPage() {
         </div>
       )}
 
-      {/* 2 kolonlu layout */}
       <div className="grid grid-cols-5 gap-6 items-start">
-        {/* ── Sol kolon (3/5) ── */}
+        {/* Sol: Üretim bilgileri */}
         <div className="col-span-3 space-y-5">
-          {/* Müşteri seçimi */}
           <Card>
             <CardHeader>
-              <CardTitle>İçerik Bilgileri</CardTitle>
+              <CardTitle>Üretim Bilgileri</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Müşteri */}
               <div className="space-y-1.5">
                 <Label htmlFor="client">Müşteri *</Label>
                 <select
@@ -191,7 +226,7 @@ export default function YeniIcerikPage() {
                   )}
                 >
                   <option value="">— Müşteri seçin —</option>
-                  {DEMO_CLIENTS.map((c) => (
+                  {clients.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
@@ -199,127 +234,158 @@ export default function YeniIcerikPage() {
                 </select>
               </div>
 
-              {/* Başlık */}
               <div className="space-y-1.5">
                 <Label htmlFor="title">Başlık *</Label>
                 <Input
                   id="title"
-                  placeholder="İçerik başlığını girin"
+                  placeholder="ör. Kış kampanyası — ürün vitrin çekimi"
                   value={form.title}
                   onChange={(e) => setField("title", e.target.value)}
                 />
               </div>
 
-              {/* Platform(lar) */}
               <div className="space-y-2">
-                <Label>Platform(lar) *</Label>
+                <Label>Üretim Tipi</Label>
                 <div className="grid grid-cols-3 gap-2">
-                  {PLATFORMS.map(({ key, label, Icon }) => {
-                    const selected = form.platforms.includes(key);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => togglePlatform(key)}
-                        className={cn(
-                          "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                          selected
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                        )}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* İçerik türü */}
-              <div className="space-y-2">
-                <Label>İçerik Türü</Label>
-                <div className="flex flex-wrap gap-2">
-                  {POST_TYPES.map(({ key, label }) => {
+                  {POST_TYPES.map(({ key, label, hint }) => {
                     const selected = form.postType === key;
                     return (
                       <button
                         key={key}
                         type="button"
                         onClick={() => setField("postType", key)}
+                        title={hint}
                         className={cn(
-                          "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                          "flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors",
                           selected
                             ? "border-primary bg-primary/10 text-primary"
                             : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
                         )}
                       >
-                        {label}
+                        <span className="text-sm font-medium">{label}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {hint}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Brief / Açıklama */}
               <div className="space-y-1.5">
-                <Label htmlFor="brief">Brief / Açıklama</Label>
+                <Label htmlFor="brief">Brief / Yönerge</Label>
                 <Textarea
                   id="brief"
-                  placeholder="İçerik briefinizi yazın..."
-                  rows={3}
+                  placeholder="Kreatif fikir, ton, referanslar, kısıtlar..."
+                  rows={5}
                   value={form.brief}
                   onChange={(e) => setField("brief", e.target.value)}
                 />
               </div>
 
-              {/* Caption */}
+              {/* Medya */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="caption">Caption</Label>
+                  <Label>Ham Medya</Label>
                   <span className="text-xs text-muted-foreground">
-                    {form.caption.length}/2200
+                    {media.length} dosya
+                    {uploadingCount > 0 && ` · ${uploadingCount} yükleniyor`}
                   </span>
                 </div>
-                <Textarea
-                  id="caption"
-                  placeholder="Gönderi açıklaması..."
-                  rows={4}
-                  maxLength={2200}
-                  value={form.caption}
-                  onChange={(e) => setField("caption", e.target.value)}
-                />
-              </div>
 
-              {/* Hashtag input */}
-              <div className="space-y-1.5">
-                <Label htmlFor="hashtag">Hashtag&apos;ler</Label>
-                <Input
-                  id="hashtag"
-                  placeholder="#örnek yazıp Enter'a basın"
-                  value={hashtagInput}
-                  onChange={(e) => setHashtagInput(e.target.value)}
-                  onKeyDown={handleHashtagKeyDown}
-                  onBlur={addHashtag}
-                />
-                {form.hashtags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {form.hashtags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
-                      >
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => removeHashtag(tag)}
-                          className="hover:text-destructive transition-colors"
-                          aria-label={`${tag} kaldır`}
+                <label
+                  htmlFor="media-input"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.add("border-primary", "bg-primary/5");
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.classList.remove("border-primary", "bg-primary/5");
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove("border-primary", "bg-primary/5");
+                    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+                  }}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-input px-4 py-6 text-sm transition-colors cursor-pointer",
+                    "hover:border-primary/40 hover:bg-muted/40",
+                    !form.clientId && "opacity-60 cursor-not-allowed"
+                  )}
+                >
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="font-medium">
+                      Dosyaları sürükleyin veya{" "}
+                      <span className="text-primary">tıklayıp seçin</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      JPG, PNG, WEBP, MP4, MOV · Görsel ≤10MB · Video ≤100MB
+                    </p>
+                  </div>
+                  <input
+                    id="media-input"
+                    type="file"
+                    multiple
+                    accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"
+                    disabled={!form.clientId}
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleFiles(e.target.files);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </label>
+
+                {media.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 pt-2">
+                    {media.map((m) => {
+                      const isVideo = m.mimeType.startsWith("video/");
+                      return (
+                        <div
+                          key={m.storageKey}
+                          className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
                         >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
+                          {isVideo ? (
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
+                              <FileVideo className="h-6 w-6" />
+                              <span className="px-1 text-[10px] text-center truncate w-full">
+                                {m.name}
+                              </span>
+                            </div>
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={m.publicUrl}
+                              alt={m.name}
+                              className="h-full w-full object-cover"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(m.storageKey)}
+                            className="absolute top-1 right-1 rounded-full bg-black/70 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label="Kaldır"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1">
+                            <div className="flex items-center gap-1 text-[10px] text-white/90">
+                              {isVideo ? (
+                                <FileVideo className="h-3 w-3" />
+                              ) : (
+                                <ImageIcon className="h-3 w-3" />
+                              )}
+                              <span className="truncate">
+                                {(m.sizeBytes / 1024 / 1024).toFixed(1)}MB
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -327,14 +393,13 @@ export default function YeniIcerikPage() {
           </Card>
         </div>
 
-        {/* ── Sağ kolon (2/5) ── */}
+        {/* Sağ: Çekim planlaması */}
         <div className="col-span-2 space-y-5">
           <Card>
             <CardHeader>
-              <CardTitle>Planlama</CardTitle>
+              <CardTitle>Çekim Planı</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Çekim tarihi */}
               <div className="space-y-1.5">
                 <Label htmlFor="shootDate">Çekim Tarihi</Label>
                 <Input
@@ -344,8 +409,6 @@ export default function YeniIcerikPage() {
                   onChange={(e) => setField("shootDate", e.target.value)}
                 />
               </div>
-
-              {/* Çekim yeri */}
               <div className="space-y-1.5">
                 <Label htmlFor="shootLocation">Çekim Yeri</Label>
                 <Input
@@ -355,39 +418,26 @@ export default function YeniIcerikPage() {
                   onChange={(e) => setField("shootLocation", e.target.value)}
                 />
               </div>
-
-              {/* Yayın tarihi & saati */}
-              <div className="space-y-1.5">
-                <Label htmlFor="publishAt">Yayın Tarihi & Saati</Label>
-                <Input
-                  id="publishAt"
-                  type="datetime-local"
-                  value={form.publishAt}
-                  onChange={(e) => setField("publishAt", e.target.value)}
-                />
-              </div>
             </CardContent>
           </Card>
 
-          {/* Aksiyon butonları */}
           <div className="space-y-2">
             <button
               type="button"
-              onClick={handleAddToPipeline}
+              onClick={handleSubmit}
+              disabled={submitting || uploadingCount > 0}
               className={cn(
                 buttonVariants({ variant: "default" }),
                 "w-full bg-primary text-white hover:bg-primary/90"
               )}
             >
-              Pipeline&apos;a Ekle
+              {submitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Üretim Kaydı Oluştur
             </button>
-            <button
-              type="button"
-              onClick={handleSaveDraft}
-              className={cn(buttonVariants({ variant: "outline" }), "w-full")}
-            >
-              Taslak Kaydet
-            </button>
+            <p className="text-xs text-muted-foreground text-center pt-1">
+              Onay aşamasından sonra Yayın Planlayıcı'da platform/caption/zaman
+              ayarlanır.
+            </p>
           </div>
         </div>
       </div>

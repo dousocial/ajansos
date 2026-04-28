@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard, Users, CalendarDays, BarChart3,
-  Bell, Settings, LogOut, Menu, X, Sparkles,
-  CheckSquare, FileImage, CreditCard,
+  Bell, Settings, LogOut, Menu, X,
+  CheckSquare, FileImage, CreditCard, Receipt, Send, Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -24,17 +25,20 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard",    href: "/dashboard",  icon: LayoutDashboard, roles: ["ADMIN", "TEAM"] },
   { label: "Müşteriler",   href: "/musteriler", icon: Users,           roles: ["ADMIN"] },
-  { label: "İçerikler",    href: "/icerikler",  icon: FileImage,       roles: ["ADMIN", "TEAM"] },
-  { label: "Görevlerim",   href: "/gorevlerim", icon: CheckSquare,     roles: ["TEAM"] },
-  { label: "Takvim",       href: "/takvim",     icon: CalendarDays,    roles: ["ADMIN", "TEAM"] },
+  { label: "Üretim",         href: "/icerikler",  icon: FileImage,       roles: ["ADMIN", "TEAM"] },
+  { label: "Süreç Yönetimi", href: "/surec",      icon: Workflow,        roles: ["ADMIN", "TEAM"] },
+  { label: "Yayın Planlayıcı", href: "/yayin",      icon: Send,            roles: ["ADMIN", "TEAM"] },
+  { label: "Görevlerim",     href: "/gorevlerim", icon: CheckSquare,     roles: ["TEAM"] },
+  { label: "Takvim",         href: "/takvim",     icon: CalendarDays,    roles: ["ADMIN", "TEAM"] },
   { label: "Raporlar",     href: "/raporlar",   icon: BarChart3,       roles: ["ADMIN"] },
   { label: "Ödemeler",     href: "/odemeler",   icon: CreditCard,      roles: ["ADMIN"] },
 ];
 
 const PORTAL_ITEMS: NavItem[] = [
-  { label: "İçeriklerim",  href: "/portal",          icon: FileImage,       roles: ["CLIENT"] },
-  { label: "Takvim",       href: "/portal/takvim",   icon: CalendarDays,    roles: ["CLIENT"] },
+  { label: "İçeriklerim",  href: "/portal",            icon: FileImage,     roles: ["CLIENT"] },
+  { label: "Takvim",       href: "/portal/takvim",     icon: CalendarDays,  roles: ["CLIENT"] },
   { label: "Performans",   href: "/portal/performans", icon: BarChart3,     roles: ["CLIENT"] },
+  { label: "Faturalarım",  href: "/portal/faturalar",  icon: Receipt,       roles: ["CLIENT"] },
 ];
 
 function getInitials(name?: string | null) {
@@ -61,12 +65,18 @@ export function AjansShell({ children }: { children: React.ReactNode }) {
       >
         {/* Logo */}
         <div className={cn("flex items-center gap-3 px-4 py-4 border-b border-border", collapsed && "justify-center")}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
-            <Sparkles className="h-4 w-4 text-white" />
-          </div>
+          <Image
+            src="/logo.svg"
+            alt="DouCRM"
+            width={32}
+            height={32}
+            className="h-8 w-8 shrink-0 rounded-lg object-contain"
+            priority
+            unoptimized
+          />
           {!collapsed && (
             <span className="text-base font-bold text-foreground tracking-tight">
-              Ajans<span className="text-primary">OS</span>
+              Dou<span className="text-primary">CRM</span>
             </span>
           )}
         </div>
@@ -148,11 +158,16 @@ export function AjansShell({ children }: { children: React.ReactNode }) {
         {/* Top bar */}
         <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-              <Sparkles className="h-3.5 w-3.5 text-white" />
-            </div>
+            <Image
+              src="/logo.svg"
+              alt="DouCRM"
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-lg object-contain"
+              unoptimized
+            />
             <span className="text-sm font-bold">
-              Ajans<span className="text-primary">OS</span>
+              Dou<span className="text-primary">CRM</span>
             </span>
           </div>
 
