@@ -19,6 +19,13 @@ export const authConfig: NextAuthConfig = {
       const isLoginPage = path === "/login" || path.startsWith("/login/");
       const isPortalPage = path === "/portal" || path.startsWith("/portal/");
       const isRoot = path === "/";
+      // Yasal sayfalar — Meta App Review, KVKK/GDPR uyumu için herkese açık
+      // olmalı. Auth gerektirmez.
+      const PUBLIC_PATHS = ["/privacy", "/terms", "/data-deletion"];
+      const isPublicLegal = PUBLIC_PATHS.some(
+        (p) => path === p || path.startsWith(p + "/")
+      );
+      if (isPublicLegal) return true;
 
       const homeFor = (r?: string) => (r === "CLIENT" ? "/portal" : "/dashboard");
 
