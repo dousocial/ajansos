@@ -135,6 +135,30 @@ export default function FaturaDetayPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  // Hızlı "Ödendi" — varsayılan yöntemi ("havale") ve notsuz POST eder.
+  // Detaylı not/yöntem girmek isteyen kullanıcı aşağıdaki form'u kullanabilir.
+  const handleQuickMarkPaid = async () => {
+    if (!confirm("Bu fatura ÖDENDİ olarak işaretlensin mi?\n\nDetay (yöntem/not) girmek istersen aşağıdaki form'u kullan.")) {
+      return;
+    }
+    setMarkingPaid(true);
+    try {
+      const res = await fetch(`/api/invoices/${id}/mark-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: "havale" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "İşaretlenemedi");
+      toast.success("Fatura ödendi olarak işaretlendi");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Hata oluştu");
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirm("Bu faturayı silmek istediğinizden emin misiniz?")) return;
     setDeleting(true);
@@ -197,6 +221,32 @@ export default function FaturaDetayPage({ params }: { params: Promise<{ id: stri
           </div>
           <h1 className="text-2xl font-bold tracking-tight">{invoice.title}</h1>
           {invoice.description && <p className="text-sm text-muted-foreground mt-1">{invoice.description}</p>}
+          {/* Bekleme/gecikme durum yazısı — SENT ise vade'ye kalan süre, OVERDUE ise gecikme süresi */}
+          {(invoice.status === "SENT" || invoice.status === "OVERDUE") && (() => {
+            const now = new Date();
+            const due = new Date(invoice.dueDate);
+            const diffDays = Math.round((due.getTime() - now.getTime()) / 86400000);
+            if (invoice.status === "OVERDUE" || diffDays < 0) {
+              const overdueDays = Math.abs(diffDays);
+              return (
+                <p className="text-sm text-rose-600 mt-1.5 font-medium">
+                  ⚠ Ödeme gecikti — {overdueDays} gün geçti (vade: {formatDate(invoice.dueDate)})
+                </p>
+              );
+            }
+            if (diffDays === 0) {
+              return (
+                <p className="text-sm text-amber-600 mt-1.5 font-medium">
+                  ⏳ Ödeme bekleniyor — vade BUGÜN
+                </p>
+              );
+            }
+            return (
+              <p className="text-sm text-amber-600 mt-1.5 font-medium">
+                ⏳ Ödeme bekleniyor — vadeye {diffDays} gün
+              </p>
+            );
+          })()}
         </div>
         <div className="text-right shrink-0">
           <div className="text-3xl font-bold">{formatCurrency(Number(invoice.totalAmount), invoice.currency)}</div>
@@ -224,6 +274,21 @@ export default function FaturaDetayPage({ params }: { params: Promise<{ id: stri
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {invoice.status === "DRAFT" ? "Müşteriye Gönder" : "Yeniden Gönder"}
+          </button>
+        )}
+        {/* Hızlı Ödendi — SENT/OVERDUE/DRAFT durumlarında, varsayılan değerlerle. */}
+        {canMarkPaid && (
+          <button
+            onClick={handleQuickMarkPaid}
+            disabled={markingPaid}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "gap-2 border-emerald-500/40 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10"
+            )}
+            title="Faturayı ödendi olarak işaretle (varsayılan: havale)"
+          >
+            {markingPaid ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            Ödendi
           </button>
         )}
         {canDelete && (
