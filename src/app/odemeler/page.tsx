@@ -12,7 +12,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { formatCurrency } from "@/lib/invoices/compute";
 import {
   Plus, Search, Loader2, FileText, Receipt, Clock,
-  CheckCircle2, AlertTriangle, TrendingUp, RefreshCcw, Pause,
+  CheckCircle2, AlertTriangle, TrendingUp, RefreshCcw, Pause, FilePlus2,
 } from "lucide-react";
 
 interface InvoiceRow {
@@ -76,6 +76,7 @@ export default function OdemelerPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,6 +104,46 @@ export default function OdemelerPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Bir abonelikten manuel fatura üret. Sıradaki tıkta backend nextInvoiceDate'i
+  // ileri aldığı için bir sonraki dönemin faturası kesilir → "her tıkta bir
+  // sonraki ay" akışı.
+  async function generateInvoice(sub: SubscriptionRow) {
+    if (sub.status !== "ACTIVE") {
+      toast.error("Sadece aktif abonelikler için fatura üretilebilir");
+      return;
+    }
+    if (
+      !confirm(
+        `"${sub.name}" için ${formatDate(sub.nextInvoiceDate)} tarihli fatura üretilecek.\nDevam edilsin mi?`
+      )
+    ) {
+      return;
+    }
+    setGeneratingId(sub.id);
+    try {
+      const res = await fetch(`/api/subscriptions/${sub.id}/generate-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        invoice?: { invoiceNumber: string; id: string };
+        nextInvoiceDate?: string;
+        error?: string;
+      } | null;
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error ?? "Fatura üretilemedi");
+      }
+      toast.success(`Fatura oluşturuldu: ${data.invoice?.invoiceNumber}`);
+      // Listeyi tazele — yeni fatura görünsün ve sıradaki tarih güncellensin
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setGeneratingId(null);
+    }
+  }
 
   const summary = useMemo(() => {
     const paid = invoices.filter((i) => i.status === "PAID");
@@ -337,11 +378,17 @@ export default function OdemelerPage() {
               {filteredSubs.map((sub) => {
                 const meta = SUB_STATUS_META[sub.status];
                 const Icon = meta.icon;
+                const isGenerating = generatingId === sub.id;
+                const canGenerate = sub.status === "ACTIVE";
                 return (
-                  <Link key={sub.id} href={`/odemeler/abonelikler/${sub.id}`} className="block">
-                    <Card className="p-4 hover:bg-muted/40 transition-colors cursor-pointer">
+                  <Card key={sub.id} className="p-4 hover:bg-muted/40 transition-colors group relative">
+                    <Link
+                      href={`/odemeler/abonelikler/${sub.id}`}
+                      className="block"
+                      aria-label={`${sub.name} detayını aç`}
+                    >
                       <div className="flex items-center justify-between gap-4">
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 pr-32">
                           <div className="flex items-center gap-2 mb-1">
                             <Badge className={cn("border text-[11px] gap-1", meta.className)}>
                               <Icon className="h-3 w-3" />
@@ -364,8 +411,34 @@ export default function OdemelerPage() {
                           </div>
                         </div>
                       </div>
-                    </Card>
-                  </Link>
+                    </Link>
+
+                    {/* Fatura Üret butonu — Link'in dışında, mutlak konumlu */}
+                    <button
+                      type="button"
+                      onClick={() => generateInvoice(sub)}
+                      disabled={isGenerating || !canGenerate}
+                      title={
+                        !canGenerate
+                          ? "Sadece aktif abonelikler için fatura üretilebilir"
+                          : `${formatDate(sub.nextInvoiceDate)} tarihli fatura üret`
+                      }
+                      className={cn(
+                        "absolute right-32 top-1/2 -translate-y-1/2",
+                        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
+                        "border border-primary/30 bg-primary/5 text-primary",
+                        "hover:bg-primary/10 hover:border-primary/50 transition-colors",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FilePlus2 className="h-3.5 w-3.5" />
+                      )}
+                      Fatura Üret
+                    </button>
+                  </Card>
                 );
               })}
             </div>
