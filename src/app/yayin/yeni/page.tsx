@@ -127,6 +127,9 @@ function YayinYeniPage() {
   const [aiPromptText, setAiPromptText] = useState("");
   const [aiPromptHint, setAiPromptHint] = useState("");
 
+  // Inline medya yükleme — projede dosya yoksa veya yeni dosya eklemek için
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -150,6 +153,56 @@ function YayinYeniPage() {
       .catch(() => toast.error("Proje yüklenemedi"))
       .finally(() => setLoading(false));
   }, [projectId]);
+
+  // Yüklenen dosyalar projeye eklendikten sonra UI'da hemen görünmesi için
+  // proje verisini yeniden çekiyoruz (files alanı dolar). Caption/hashtag
+  // konfigürasyonu mevcut state'te kalıyor.
+  async function refreshProject() {
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const json = (await res.json()) as { data: ProjectData };
+      setProject(json.data);
+    } catch {
+      // sessizce geç
+    }
+  }
+
+  // Birden fazla dosya seçildiyse paralel yükle. Tek hatada toast veriyor ama
+  // başarılı olanları da projeye yansıtmak için yine refresh ediyoruz.
+  async function handleUploadFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0 || !project) return;
+    setUploadingFiles(true);
+    try {
+      const uploads = Array.from(fileList).map(async (f) => {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch(`/api/projects/${project.id}/files`, {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(data?.error ?? `${f.name} yüklenemedi`);
+        }
+        return res.json();
+      });
+      const results = await Promise.allSettled(uploads);
+      const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+      const okCount = results.length - failed.length;
+      if (okCount > 0) {
+        toast.success(`${okCount} dosya yüklendi`);
+        await refreshProject();
+      }
+      if (failed.length > 0) {
+        const msg = failed[0].reason instanceof Error ? failed[0].reason.message : "Hata";
+        toast.error(`${failed.length} dosya yüklenemedi: ${msg}`);
+      }
+    } finally {
+      setUploadingFiles(false);
+    }
+  }
 
   const togglePlatform = (p: Platform) => {
     if (!isPlatformSupported(p)) {
@@ -439,24 +492,91 @@ function YayinYeniPage() {
         </div>
       </div>
 
-      {!hasMedia && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          <div className="flex-1">
-            <div className="font-medium">Bu projede medya yok</div>
-            <div className="text-xs">
-              Yayın için en az bir görsel/video gerekli.{" "}
-              <Link
-                href={`/icerikler/${project.id}`}
-                className="underline font-medium"
-              >
-                Üretim sayfasından medya ekle
-              </Link>
-              .
+      {/* Medya — yüklü dosyalar + ekle butonu (her durumda görünür).
+          Görseller thumb olarak listelenir, video file ikonu ile.
+          "Medya yok" durumunda üst bordür ipucu olarak amber kalır. */}
+      <Card className={cn(!hasMedia && "border-amber-300 bg-amber-50/40")}>
+        <CardContent className="py-4 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-medium flex items-center gap-1.5">
+                {hasMedia ? (
+                  <>
+                    Medya
+                    <span className="text-xs text-muted-foreground font-normal">
+                      · {project.files.length} dosya
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <span className="text-amber-900">Bu projede henüz medya yok</span>
+                  </>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {hasMedia
+                  ? "Daha fazla eklemek için sağdaki butonu kullan"
+                  : "Yayınlamak için aşağıdan görsel veya video ekle"}
+              </div>
             </div>
+            <label
+              className={cn(
+                buttonVariants({ size: "sm" }),
+                "gap-1.5 cursor-pointer",
+                uploadingFiles && "opacity-60 pointer-events-none"
+              )}
+            >
+              {uploadingFiles ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Camera className="h-4 w-4" />
+              )}
+              {uploadingFiles ? "Yükleniyor…" : "Medya Ekle"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  handleUploadFiles(e.target.files);
+                  // Aynı dosyayı tekrar seçince onChange tetiklensin
+                  e.target.value = "";
+                }}
+              />
+            </label>
           </div>
-        </div>
-      )}
+
+          {hasMedia && (
+            <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
+              {project.files.map((f) => {
+                const isImg = f.mimeType.startsWith("image/");
+                return (
+                  <div
+                    key={f.id}
+                    className="relative aspect-square rounded-lg overflow-hidden border bg-muted"
+                    title={f.name}
+                  >
+                    {isImg ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={f.publicUrl}
+                        alt={f.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground gap-1 p-2">
+                        <VideoIcon className="h-6 w-6" />
+                        <span className="text-[9px] text-center line-clamp-2">{f.name}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
         {/* Sol: konfigürasyon (3/5) */}
