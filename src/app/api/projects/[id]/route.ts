@@ -103,9 +103,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...rest,
       ...(shootDate !== undefined ? { shootDate: shootDate ? new Date(shootDate) : null } : {}),
       ...(publishAt !== undefined ? { publishAt: publishAt ? new Date(publishAt) : null } : {}),
+      // Süreç Yönetimi tablosunda satır sonunda son müdahale eden kişi
+      // gözüksün diye her PATCH'te lastActorId güncelleniyor.
+      lastActorId: session.user.id ?? null,
     },
     include: {
       client: { select: { id: true, name: true, slug: true, logo: true } },
+      lastActor: { select: { id: true, name: true, image: true } },
     },
   });
 

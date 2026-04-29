@@ -148,6 +148,7 @@ model User {
   approvals         Approval[]
   activityLogs      ActivityLog[]
   notificationPrefs NotificationPref[]
+  lastEditedProjects Project[]          @relation("ProjectLastActor")
 
   @@index([email])
   @@index([role])
@@ -325,11 +326,15 @@ model Project {
   // içinde işaretlenmediğinde uyarı (yanıp söner) tetiklenir.
   adRequired    Boolean       @default(false)
   adPosted      Boolean       @default(false)
+  // En son hangi kullanıcı bu projeye dokundu (PATCH/checkbox/durum değişimi)
+  // — Süreç Yönetimi tablosunda satır sonunda "Fuat" gibi gösterilir.
+  lastActorId   String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
 
   client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  lastActor      User?           @relation("ProjectLastActor", fields: [lastActorId], references: [id], onDelete: SetNull)
   tasks          Task[]
   files          File[]
   approvals      Approval[]

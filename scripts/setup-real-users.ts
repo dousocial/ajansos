@@ -22,6 +22,7 @@ async function main() {
       "admin@ajans.com",
       "ayse@ajans.com",
       "selin@coffeehouse.com",
+      "admin@dousocial.com", // önceki admin user — dou ile değişti
     ];
     const removed = await prisma.user.updateMany({
       where: { email: { in: seedEmails }, deletedAt: null },
@@ -31,9 +32,9 @@ async function main() {
 
     const users = [
       {
-        email: "admin@dousocial.com",
+        email: "dou@dousocial.com",
         password: "dou123",
-        name: "Admin",
+        name: "Dou",
         role: "ADMIN" as const,
       },
       {
@@ -52,6 +53,18 @@ async function main() {
         email: "seyma@dousocial.com",
         password: "seyma123",
         name: "Şeyma",
+        role: "TEAM" as const,
+      },
+      {
+        email: "esin@dousocial.com",
+        password: "esin123",
+        name: "Esin",
+        role: "TEAM" as const,
+      },
+      {
+        email: "nur@dousocial.com",
+        password: "nur123",
+        name: "Nur",
         role: "TEAM" as const,
       },
     ];

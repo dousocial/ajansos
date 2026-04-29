@@ -9,7 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
-  Save, Bell, User, Shield, Palette, Loader2,
+  Save, Bell, User, Shield, Palette, Loader2, ScrollText,
 } from "lucide-react";
 
 interface Me {
@@ -26,6 +26,34 @@ interface NotificationPref {
   push: boolean;
   inApp: boolean;
 }
+
+// ActivityLog action kodlarını insan-okur Türkçeye çevirir.
+// Eksik kod düşerse raw action stringi gösteriliyor (fallback).
+const ACTION_LABELS: Record<string, string> = {
+  "project.created": "yeni içerik oluşturdu",
+  "project.updated": "içeriği güncelledi",
+  "project.deleted": "içeriği sildi",
+  "project.status_changed": "içerik durumunu değiştirdi",
+  "client.created": "yeni müşteri ekledi",
+  "client.updated": "müşteri bilgilerini güncelledi",
+  "client.deleted": "müşteriyi sildi",
+  "invoice.created": "yeni fatura oluşturdu",
+  "invoice.sent": "müşteriye fatura gönderdi",
+  "invoice.paid": "faturayı ödendi olarak işaretledi",
+  "invoice.deleted": "faturayı sildi",
+  "invoice.generated_manual": "manuel fatura üretti",
+  "subscription.created": "yeni abonelik oluşturdu",
+  "subscription.updated": "abonelik bilgilerini güncelledi",
+  "subscription.deleted": "aboneliği sildi",
+  "social.connected": "sosyal medya hesabı bağladı",
+  "social.disconnected": "sosyal medya hesabını kaldırdı",
+  "publish.scheduled": "yayın planladı",
+  "publish.published": "yayın yaptı",
+  "publish.failed": "yayın başarısız oldu",
+  "portal.preview_created": "müşteri portalını önizledi",
+  "user.password_changed": "şifresini değiştirdi",
+  "user.profile_updated": "profilini güncelledi",
+};
 
 const NOTIFICATION_LABELS: Record<string, { label: string; desc: string }> = {
   TASK_ASSIGNED: { label: "Görev atandığında", desc: "Size yeni bir görev eklendiğinde" },
@@ -48,6 +76,33 @@ export default function AyarlarPage() {
   const [prefs, setPrefs] = useState<NotificationPref[]>([]);
   const [prefsLoading, setPrefsLoading] = useState(true);
   const [prefsSaving, setPrefsSaving] = useState(false);
+
+  // Aktif tab + aktivite log state'i — log tab'ı seçilene kadar fetch etmiyoruz.
+  const [activeTab, setActiveTab] = useState<string>("profil");
+  interface ActivityItem {
+    id: string;
+    action: string;
+    details: unknown;
+    createdAt: string;
+    user: { id: string; name: string | null; email: string; image: string | null } | null;
+    project: { id: string; title: string } | null;
+  }
+  const [logs, setLogs] = useState<ActivityItem[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  const fetchLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      const res = await fetch("/api/activity?limit=100", { cache: "no-store" });
+      if (!res.ok) throw new Error("Loglar yüklenemedi");
+      const data = await res.json();
+      setLogs(data.data ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Hata");
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
 
   const [current, setCurrent] = useState("");
   const [newPass, setNewPass] = useState("");
@@ -185,7 +240,15 @@ export default function AyarlarPage() {
         <p className="text-sm text-muted-foreground">Hesap ve uygulama ayarlarınızı yönetin</p>
       </div>
 
-      <Tabs defaultValue="profil">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v);
+          if (v === "loglar" && logs.length === 0 && !logsLoading) {
+            fetchLogs();
+          }
+        }}
+      >
         <TabsList>
           <TabsTrigger value="profil" className="gap-1.5">
             <User className="h-3.5 w-3.5" /> Profil
@@ -198,6 +261,9 @@ export default function AyarlarPage() {
           </TabsTrigger>
           <TabsTrigger value="gorunum" className="gap-1.5">
             <Palette className="h-3.5 w-3.5" /> Görünüm
+          </TabsTrigger>
+          <TabsTrigger value="loglar" className="gap-1.5">
+            <ScrollText className="h-3.5 w-3.5" /> Loglar
           </TabsTrigger>
         </TabsList>
 
@@ -404,6 +470,81 @@ export default function AyarlarPage() {
                 </div>
               ))}
             </div>
+          </Card>
+        </TabsContent>
+
+        {/* Loglar — kim ne zaman ne yaptı */}
+        <TabsContent value="loglar" className="mt-4">
+          <Card className="p-0 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Aktivite Logları</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Son 100 işlem · sistem genelinde
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchLogs}
+                disabled={logsLoading}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 text-xs")}
+              >
+                {logsLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ScrollText className="h-3.5 w-3.5" />
+                )}
+                Yenile
+              </button>
+            </div>
+
+            {logsLoading && logs.length === 0 ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Yükleniyor…
+              </div>
+            ) : logs.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                Henüz log kaydı yok.
+              </div>
+            ) : (
+              <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+                {logs.map((log) => {
+                  const initials = (log.user?.name ?? "?").charAt(0).toUpperCase();
+                  const date = new Date(log.createdAt);
+                  const dateStr = date.toLocaleString("tr-TR", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  return (
+                    <div key={log.id} className="px-5 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors">
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm">
+                          <span className="font-medium">{log.user?.name ?? "Sistem"}</span>{" "}
+                          <span className="text-muted-foreground">
+                            {ACTION_LABELS[log.action] ?? log.action}
+                          </span>
+                          {log.project && (
+                            <>
+                              {" "}
+                              <span className="text-muted-foreground">·</span>{" "}
+                              <span className="text-foreground">{log.project.title}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {dateStr} · {log.user?.email ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
         </TabsContent>
       </Tabs>

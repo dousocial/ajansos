@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,8 @@ interface ProjectRow {
   adRequired: boolean;
   adPosted: boolean;
   client: { id: string; name: string };
+  // En son hangi kullanıcı bu projeye dokundu — satır sonunda görünür.
+  lastActor: { id: string; name: string; image: string | null } | null;
 }
 
 interface ClientLite {
@@ -169,6 +172,8 @@ function CheckCell({
 // ─── Sayfa ───────────────────────────────────────────────────────────────────
 
 export default function SurecPage() {
+  const { data: session } = useSession();
+  const me = session?.user as { id?: string; name?: string | null; image?: string | null } | undefined;
   const [rows, setRows] = useState<ProjectRow[]>([]);
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -237,8 +242,23 @@ export default function SurecPage() {
   async function patchRow(id: string, patch: Partial<ProjectRow> & { status?: string; shootDate?: string | null; publishAt?: string | null }) {
     setPending((p) => ({ ...p, [id]: true }));
     // Optimistic: önceden uygula, hata varsa geri al.
+    // lastActor anında current user'a set ediliyor — kullanıcı tıklar tıklamaz
+    // satır sonunda kendi adını görür (backend yanıtı beklemez).
     const prev = rows.find((r) => r.id === id);
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } as ProjectRow : r)));
+    const optimisticActor = me?.id
+      ? { id: me.id, name: me.name ?? "(siz)", image: me.image ?? null }
+      : null;
+    setRows((rs) =>
+      rs.map((r) =>
+        r.id === id
+          ? ({
+              ...r,
+              ...patch,
+              lastActor: optimisticActor ?? r.lastActor,
+            } as ProjectRow)
+          : r
+      )
+    );
     try {
       const res = await fetch(`/api/projects/${id}`, {
         method: "PATCH",
@@ -249,6 +269,8 @@ export default function SurecPage() {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error ?? "Güncelleme başarısız");
       }
+      // Backend de lastActor döner — kullansak rollback'siz, ama optimistic
+      // sürüm zaten doğru; ekstra refetch'e gerek yok.
     } catch (e) {
       // Geri al
       if (prev) {
@@ -309,6 +331,10 @@ export default function SurecPage() {
           editingDone: false,
           adRequired: false,
           adPosted: false,
+          // Backend lastActorId set ediyor; UI da hemen göstersin diye optimistic.
+          lastActor: me?.id
+            ? { id: me.id, name: me.name ?? "(siz)", image: me.image ?? null }
+            : json.data.lastActor ?? null,
         },
         ...rs,
       ]);
@@ -391,6 +417,7 @@ export default function SurecPage() {
                   <th className="text-center px-2 py-2 font-medium">Paylaşıldı</th>
                   <th className="text-center px-2 py-2 font-medium">Reklam</th>
                   <th className="text-right px-3 py-2 font-medium">İşlem</th>
+                  <th className="text-left px-3 py-2 font-medium whitespace-nowrap">Son</th>
                 </tr>
               </thead>
               <tbody>
@@ -471,12 +498,13 @@ export default function SurecPage() {
                         </button>
                       </div>
                     </td>
+                    <td className="px-3 py-2 align-top text-[10px] text-muted-foreground">—</td>
                   </tr>
                 )}
 
                 {filtered.length === 0 && !adding && (
                   <tr>
-                    <td colSpan={11} className="px-3 py-10 text-center text-muted-foreground">
+                    <td colSpan={12} className="px-3 py-10 text-center text-muted-foreground">
                       <Workflow className="h-8 w-8 mx-auto mb-2 opacity-40" />
                       <p className="text-sm">İçerik yok</p>
                       <p className="text-xs">Yeni satır ekleyerek başlayın.</p>
@@ -619,6 +647,23 @@ export default function SurecPage() {
                         >
                           <ExternalLink className="h-3 w-3" /> İçeriği Hazırla
                         </Link>
+                      </td>
+
+                      {/* Son müdahale eden — patchRow optimistic olarak günceller */}
+                      <td className="px-3 py-2 align-middle whitespace-nowrap">
+                        {r.lastActor ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                            title={`Son düzenleyen: ${r.lastActor.name}`}
+                          >
+                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold">
+                              {r.lastActor.name?.[0]?.toUpperCase() ?? "?"}
+                            </span>
+                            <span>{r.lastActor.name}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground/50">—</span>
+                        )}
                       </td>
                     </tr>
                   );

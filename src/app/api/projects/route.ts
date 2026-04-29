@@ -94,6 +94,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
       include: {
         client: { select: { id: true, name: true, slug: true, logo: true } },
+        lastActor: { select: { id: true, name: true, image: true } },
         // İlk medya — /icerikler listesinde thumbnail için.
         files: {
           where: { deletedAt: null },
@@ -218,10 +219,13 @@ export async function POST(req: NextRequest) {
         clientId,
         shootDate: shootDate ? new Date(shootDate) : null,
         publishAt: publishAtDate,
+        // Proje yaratan da bir aktör — Süreç tablosunda satır sonunda görünsün.
+        lastActorId: session.user.id ?? null,
         ...rest,
       },
       include: {
         client: { select: { id: true, name: true, slug: true, logo: true } },
+        lastActor: { select: { id: true, name: true, image: true } },
       },
     });
 
